@@ -1,0 +1,728 @@
+// app.js - 家庭共享记账主应用
+// 使用 React 18 (UMD) + Babel standalone 编译 JSX
+// Firebase 通过 firebase-config.js 注入
+
+const { useState, useEffect, useCallback } = React;
+
+// ============ 常量 ============
+const CATS = [
+  { id: "food", name: "餐饮", icon: "🍜", color: "#FF6B6B" },
+  { id: "transport", name: "交通", icon: "🚗", color: "#4ECDC4" },
+  { id: "shopping", name: "购物", icon: "🛍️", color: "#45B7D1" },
+  { id: "housing", name: "住房", icon: "🏠", color: "#96CEB4" },
+  { id: "entertainment", name: "娱乐", icon: "🎮", color: "#D4A574" },
+  { id: "medical", name: "医疗", icon: "💊", color: "#DDA0DD" },
+  { id: "education", name: "教育", icon: "📚", color: "#98D8C8" },
+  { id: "clothing", name: "服饰", icon: "👔", color: "#F7DC6F" },
+  { id: "beauty", name: "美容", icon: "💄", color: "#FF69B4" },
+  { id: "social", name: "社交", icon: "🍻", color: "#E8A87C" },
+  { id: "phone", name: "通讯", icon: "📱", color: "#85CDCA" },
+  { id: "pet", name: "宠物", icon: "🐱", color: "#C9B1FF" },
+  { id: "kids", name: "育儿", icon: "👶", color: "#FFB7B2" },
+  { id: "gift", name: "礼金", icon: "🎁", color: "#FF9AA2" },
+  { id: "travel", name: "旅行", icon: "✈️", color: "#B5EAD7" },
+  { id: "other", name: "其他", icon: "📝", color: "#C7CEEA" }
+];
+
+const DEF_CURR = [
+  { code: "HKD", name: "港币", symbol: "HK$", rate: 1 },
+  { code: "CNY", name: "人民币", symbol: "¥", rate: 0.9 },
+  { code: "USD", name: "美元", symbol: "$", rate: 7.8 },
+  { code: "EUR", name: "欧元", symbol: "€", rate: 8.5 }
+];
+
+const MEMBERS = [
+  { id: "wife", name: "老婆", avatar: "👩", color: "#FF69B4" },
+  { id: "husband", name: "老公", avatar: "👨", color: "#4A90D9" }
+];
+
+const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+// ============ 工具函数 ============
+const fmtD = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const monthStr = d => d.getFullYear() + "年" + (d.getMonth() + 1) + "月";
+const sameMonth = (a, b) => { const x = new Date(a), y = new Date(b); return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth(); };
+const findCurr = (code, list) => list.find(c => c.code === code) || list[0];
+const findMem = id => MEMBERS.find(m => m.id === id) || MEMBERS[0];
+const escH = s => String(s).replace(/"/g, '""');
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+// ============ 子组件 ============
+function PieChart({ data, size = 170 }) {
+  if (!data || !data.length) return <div style={{ textAlign: "center", color: "#999", padding: 20 }}>暂无数据</div>;
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (!total) return <div style={{ textAlign: "center", color: "#999", padding: 20 }}>暂无数据</div>;
+  const r = size / 2 - 10, cx = size / 2, cy = size / 2;
+  let cum = -Math.PI / 2;
+  const paths = data.map((d, i) => {
+    const ang = (d.value / total) * 2 * Math.PI, sa = cum;
+    cum += ang;
+    const ea = cum, la = ang > Math.PI ? 1 : 0;
+    const x1 = cx + r * Math.cos(sa), y1 = cy + r * Math.sin(sa);
+    const x2 = cx + r * Math.cos(ea), y2 = cy + r * Math.sin(ea);
+    const p = data.length === 1
+      ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - .01} ${cy - r} Z`
+      : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${la} 1 ${x2} ${y2} Z`;
+    return <path key={i} d={p} fill={d.color} stroke="#fff" strokeWidth="2" />;
+  });
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+      <svg width={size} height={size}>{paths}</svg>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {data.slice(0, 7).map((d, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: d.color, display: "inline-block", flexShrink: 0 }} />
+            <span style={{ color: "#666" }}>{d.name}</span>
+            <span style={{ fontWeight: 600, color: "#333" }}>{"HK$" + d.value.toFixed(0)}</span>
+            <span style={{ color: "#999", fontSize: 10 }}>{"(" + ((d.value / total) * 100).toFixed(0) + "%)"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BarChart({ data }) {
+  const h = 140;
+  if (!data || !data.length) return null;
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: h, padding: "0 8px" }}>
+      {data.map((d, i) => {
+        const bh = Math.max((d.value / max) * (h - 36), 2);
+        return (
+          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 9, color: "#999" }}>{d.value > 0 ? ((d.value / 1000).toFixed(1) + "k") : ""}</span>
+            <div style={{ width: "100%", maxWidth: 30, borderRadius: "4px 4px 0 0", height: bh, background: "linear-gradient(180deg,#667eea,#764ba2)" }} />
+            <span style={{ fontSize: 10, color: "#888" }}>{d.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function NumPad({ value, onCh, onDel }) {
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"];
+  const tap = k => {
+    if (k === "⌫") onDel();
+    else if (k === ".") { if (!value.includes(".")) onCh(value + "."); }
+    else { const p = value.split("."); if (p[1] && p[1].length >= 2) return; onCh(value === "0" ? k : value + k); }
+  };
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, padding: "0 4px" }}>
+      {keys.map(k => (
+        <button key={k} onClick={() => tap(k)} style={{ height: 46, border: "none", borderRadius: 8, fontSize: 18, fontWeight: 500, background: k === "⌫" ? "#ffe0e0" : "#f5f5f5", color: k === "⌫" ? "#e74c3c" : "#333", cursor: "pointer" }}>{k}</button>
+      ))}
+    </div>
+  );
+}
+
+function DateModal({ value, onPick, onClose }) {
+  const d = new Date(value);
+  const [yr, setYr] = useState(d.getFullYear());
+  const [mo, setMo] = useState(d.getMonth());
+  const dim = new Date(yr, mo + 1, 0).getDate();
+  const fd = new Date(yr, mo, 1).getDay();
+  const cells = [];
+  for (let i = 0; i < fd; i++) cells.push(null);
+  for (let j = 1; j <= dim; j++) cells.push(j);
+  const prev = () => { if (mo === 0) { setYr(yr - 1); setMo(11); } else setMo(mo - 1); };
+  const next = () => { if (mo === 11) { setYr(yr + 1); setMo(0); } else setMo(mo + 1); };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 20, width: 320, maxWidth: "90vw" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <button onClick={prev} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer" }}>‹</button>
+          <span style={{ fontWeight: 600 }}>{yr + "年" + (mo + 1) + "月"}</span>
+          <button onClick={next} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer" }}>›</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, textAlign: "center" }}>
+          {["日", "一", "二", "三", "四", "五", "六"].map(w => <div key={w} style={{ fontSize: 12, color: "#999", padding: 4 }}>{w}</div>)}
+          {cells.map((dd, idx) => {
+            const isSel = dd === d.getDate() && mo === d.getMonth() && yr === d.getFullYear();
+            return <div key={idx} onClick={() => { if (dd) { onPick(fmtD(new Date(yr, mo, dd))); onClose(); } }} style={{ padding: 6, borderRadius: 8, fontSize: 14, cursor: dd ? "pointer" : "default", background: isSel ? "linear-gradient(135deg,#667eea,#764ba2)" : "transparent", color: isSel ? "#fff" : dd ? "#333" : "transparent", fontWeight: isSel ? 600 : 400 }}>{dd || ""}</div>;
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CurrModal({ currs, onSave, onClose }) {
+  const [list, setList] = useState(currs.map(c => ({ ...c })));
+  const [nc, sNc] = useState(""); const [nn, sNn] = useState(""); const [ns, sNs] = useState(""); const [nr, sNr] = useState("");
+  const [ei, sEi] = useState(-1); const [er, sEr] = useState("");
+  const addC = () => {
+    if (!nc || !nn || !nr) return;
+    const r = parseFloat(nr); if (isNaN(r) || r <= 0) return;
+    setList(list.concat([{ code: nc.toUpperCase().trim(), name: nn.trim(), symbol: ns.trim() || nc.toUpperCase().trim(), rate: r }]));
+    sNc(""); sNn(""); sNs(""); sNr("");
+  };
+  const rmC = idx => { if (list[idx].code === "HKD") return; setList(list.filter((_, i) => i !== idx)); };
+  const saveEdit = () => {
+    const r = parseFloat(er); if (isNaN(r) || r <= 0) return;
+    setList(list.map((c, i) => i === ei ? { ...c, rate: r } : c));
+    sEi(-1);
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 20, width: 360, maxWidth: "92vw", maxHeight: "80vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: "#333" }}>货币管理</div>
+        <div style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>汇率 = 1单位该货币兑换多少港币</div>
+        {list.map((c, idx) => (
+          <div key={c.code + idx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
+            <div style={{ flex: 1 }}><span style={{ fontWeight: 600, fontSize: 14 }}>{c.symbol + " " + c.name}</span> <span style={{ color: "#999", fontSize: 12 }}>{c.code}</span></div>
+            {c.code === "HKD" ? <span style={{ fontSize: 13, color: "#888" }}>基准</span> :
+              ei === idx ? (
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#888" }}>{"1" + c.code + "="}</span>
+                  <input value={er} onChange={e => sEr(e.target.value)} style={{ width: 55, padding: "3px 6px", border: "1px solid #ddd", borderRadius: 6, fontSize: 12, textAlign: "center", outline: "none" }} />
+                  <span style={{ fontSize: 12, color: "#888" }}>HKD</span>
+                  <button onClick={saveEdit} style={{ border: "none", background: "#667eea", color: "#fff", borderRadius: 6, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}>✓</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#555" }}>{"1" + c.code + "=" + c.rate + "HKD"}</span>
+                  <button onClick={() => { sEi(idx); sEr(String(c.rate)); }} style={{ border: "none", background: "#f0f0f0", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#667eea" }}>编辑</button>
+                  <button onClick={() => rmC(idx)} style={{ border: "none", background: "#fff0f0", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#e74c3c" }}>删除</button>
+                </div>
+              )}
+          </div>
+        ))}
+        <div style={{ marginTop: 16, padding: 12, background: "#f9f9f9", borderRadius: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#555" }}>添加新货币</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <input value={nc} onChange={e => sNc(e.target.value)} placeholder="代码如JPY" style={{ padding: 8, border: "1px solid #ddd", borderRadius: 8, fontSize: 13, outline: "none" }} />
+            <input value={nn} onChange={e => sNn(e.target.value)} placeholder="名称如日元" style={{ padding: 8, border: "1px solid #ddd", borderRadius: 8, fontSize: 13, outline: "none" }} />
+            <input value={ns} onChange={e => sNs(e.target.value)} placeholder="符号如¥" style={{ padding: 8, border: "1px solid #ddd", borderRadius: 8, fontSize: 13, outline: "none" }} />
+            <input value={nr} onChange={e => sNr(e.target.value)} placeholder="兑港币汇率" style={{ padding: 8, border: "1px solid #ddd", borderRadius: 8, fontSize: 13, outline: "none" }} />
+          </div>
+          <button onClick={addC} style={{ width: "100%", marginTop: 8, padding: 10, border: "none", borderRadius: 8, background: "#667eea", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>添加</button>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button onClick={() => { onSave(list); onClose(); }} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "linear-gradient(135deg,#667eea,#764ba2)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>保存</button>
+          <button onClick={onClose} style={{ flex: 1, padding: 12, border: "1px solid #ddd", borderRadius: 10, background: "#fff", color: "#888", fontSize: 14, cursor: "pointer" }}>取消</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ 配对界面 ============
+function PairingScreen({ onCreate, onJoin }) {
+  const [mode, setMode] = useState(null); // null | 'create' | 'join'
+  const [code, setCode] = useState('');
+  const [createdCode, setCreatedCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleCreate = async () => {
+    setBusy(true); setErr('');
+    try {
+      const c = await onCreate();
+      setCreatedCode(c);
+    } catch (e) {
+      setErr(e.message || '创建失败');
+    }
+    setBusy(false);
+  };
+
+  const handleJoin = async () => {
+    if (code.length !== 6) { setErr('请输入 6 位配对码'); return; }
+    setBusy(true); setErr('');
+    try { await onJoin(code.toUpperCase()); }
+    catch (e) { setErr(e.message || '加入失败'); setBusy(false); }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 360, textAlign: 'center' }}>
+        <div style={{ fontSize: 56, marginBottom: 8 }}>👨‍👩‍👧‍👦</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: '#333' }}>家庭共享记账</div>
+        <div style={{ fontSize: 13, color: '#888', marginTop: 6, marginBottom: 24 }}>第一次使用，请创建或加入家庭</div>
+
+        {mode === null && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button onClick={() => setMode('create')} style={{ padding: 14, border: 'none', borderRadius: 12, background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>🆕 创建新家庭</button>
+            <button onClick={() => setMode('join')} style={{ padding: 14, border: '2px solid #667eea', borderRadius: 12, background: '#fff', color: '#667eea', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>🔗 加入已有家庭</button>
+          </div>
+        )}
+
+        {mode === 'create' && !createdCode && (
+          <div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 16, lineHeight: 1.6 }}>点击下方按钮，会生成一个配对码<br />把它告诉你的家人，让他/她加入</div>
+            <button onClick={handleCreate} disabled={busy} style={{ width: '100%', padding: 14, border: 'none', borderRadius: 12, background: busy ? '#ccc' : 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>{busy ? '创建中...' : '生成配对码'}</button>
+            <button onClick={() => { setMode(null); setErr(''); }} style={{ marginTop: 8, border: 'none', background: 'none', color: '#999', fontSize: 13, cursor: 'pointer' }}>返回</button>
+          </div>
+        )}
+
+        {mode === 'create' && createdCode && (
+          <div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 12 }}>家庭配对码（请告诉家人）</div>
+            <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: 6, color: '#667eea', padding: '16px 0', background: '#f5f3ff', borderRadius: 12, fontFamily: 'monospace' }}>{createdCode}</div>
+            <div style={{ fontSize: 12, color: '#aaa', marginTop: 12, marginBottom: 16 }}>配对码已自动保存，进入应用后也能在「我的」页面查看</div>
+            <button onClick={() => window.location.reload()} style={{ width: '100%', padding: 14, border: 'none', borderRadius: 12, background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>开始记账</button>
+          </div>
+        )}
+
+        {mode === 'join' && (
+          <div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>请输入家人分享给你的 6 位配对码</div>
+            <input value={code} onChange={e => setCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="ABCDEF" maxLength={6} style={{ width: '100%', padding: 14, border: '2px solid #e0e0e0', borderRadius: 12, fontSize: 22, textAlign: 'center', letterSpacing: 6, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+            {err && <div style={{ color: '#e74c3c', fontSize: 12, marginTop: 8 }}>{err}</div>}
+            <button onClick={handleJoin} disabled={busy} style={{ width: '100%', marginTop: 12, padding: 14, border: 'none', borderRadius: 12, background: busy ? '#ccc' : 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>{busy ? '加入中...' : '加入家庭'}</button>
+            <button onClick={() => { setMode(null); setErr(''); setCode(''); }} style={{ marginTop: 8, border: 'none', background: 'none', color: '#999', fontSize: 13, cursor: 'pointer' }}>返回</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============ 主 App ============
+function App() {
+  const [familyId, setFamilyIdState] = useState(null);
+  const [needPair, setNeedPair] = useState(false);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("add");
+  const [selCat, setSelCat] = useState(null);
+  const [amount, setAmount] = useState("0");
+  const [note, setNote] = useState("");
+  const [selDate, setSelDate] = useState(fmtD(new Date()));
+  const [selMember, setSelMember] = useState("wife");
+  const [selCurrency, setSelCurrency] = useState("HKD");
+  const [showDP, setShowDP] = useState(false);
+  const [viewMonth, setViewMonth] = useState(new Date());
+  const [toast, setToast] = useState("");
+  const [currencies, setCurrencies] = useState(DEF_CURR);
+  const [showCM, setShowCM] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
+  const [online, setOnline] = useState(navigator.onLine);
+
+  const showT = msg => { setToast(msg); setTimeout(() => setToast(""), 1800); };
+
+  // 监听在线状态
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+
+  // 加载本地数据
+  const reloadLocal = useCallback(async () => {
+    const recs = await window.FamilyStorage.getAllRecords();
+    recs.sort((a, b) => new Date(b.date) - new Date(a.date) || b.updatedAt - a.updatedAt);
+    setRecords(recs);
+    const cs = await window.FamilyStorage.getMeta('currencies', DEF_CURR);
+    setCurrencies(cs);
+    const ls = await window.FamilyStorage.getMeta('lastSyncAt', 0);
+    setLastSync(ls);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const fid = await window.FamilyStorage.getFamilyId();
+      if (!fid) { setNeedPair(true); setLoading(false); return; }
+      setFamilyIdState(fid);
+      await reloadLocal();
+      setLoading(false);
+      // 初次进入若在线，自动后台同步一次
+      if (navigator.onLine && window.FirebaseReady) {
+        doSync(fid, true);
+      }
+    })();
+  }, []);
+
+  // 同步函数
+  const doSync = async (fid = familyId, silent = false) => {
+    if (!fid || !window.FirebaseReady) {
+      if (!silent) showT(window.FirebaseReady ? "未配对家庭" : "Firebase 未配置");
+      return;
+    }
+    if (!navigator.onLine) {
+      if (!silent) showT("当前离线，无法同步");
+      return;
+    }
+    setSyncing(true);
+    try {
+      const result = await window.FamilyStorage.syncWithFirestore(
+        window.FirebaseDB, fid, window.FirebaseModule
+      );
+      await reloadLocal();
+      if (!silent) showT(`同步完成 ↑${result.pushed} ↓${result.pulled}`);
+    } catch (e) {
+      console.error(e);
+      if (!silent) showT("同步失败：" + (e.message || '未知错误'));
+    }
+    setSyncing(false);
+  };
+
+  // 创建家庭
+  const handleCreateFamily = async () => {
+    if (!window.FirebaseReady) throw new Error("Firebase 未配置，请联系管理员");
+    const code = window.FamilyStorage.generatePairCode();
+    const { doc, setDoc } = window.FirebaseModule;
+    await setDoc(doc(window.FirebaseDB, 'families', code), {
+      createdAt: Date.now()
+    });
+    await window.FamilyStorage.setFamilyId(code);
+    return code;
+  };
+
+  // 加入家庭
+  const handleJoinFamily = async (code) => {
+    if (!window.FirebaseReady) throw new Error("Firebase 未配置");
+    const { doc, getDoc } = window.FirebaseModule;
+    const snap = await getDoc(doc(window.FirebaseDB, 'families', code));
+    if (!snap.exists()) throw new Error("配对码不存在，请检查");
+    await window.FamilyStorage.setFamilyId(code);
+  };
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#f8f9fa" }}>
+      <div style={{ textAlign: "center" }}><div style={{ fontSize: 40, marginBottom: 12 }}>💰</div><div style={{ color: "#888" }}>加载中...</div></div>
+    </div>
+  );
+
+  if (needPair) return <PairingScreen onCreate={handleCreateFamily} onJoin={handleJoinFamily} />;
+
+  const monthRecs = records.filter(r => sameMonth(r.date, viewMonth));
+  const monthExp = monthRecs.reduce((s, r) => s + (r.hkdAmount || r.amount), 0);
+
+  const handleSave = async () => {
+    if (!selCat) { showT("请选择分类"); return; }
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { showT("请输入金额"); return; }
+    const curr = findCurr(selCurrency, currencies);
+    const rec = {
+      id: newId(),
+      category: selCat.id, categoryName: selCat.name, categoryIcon: selCat.icon, categoryColor: selCat.color,
+      amount: amt, currency: selCurrency, hkdAmount: amt * curr.rate,
+      note, date: selDate, member: selMember, createdAt: new Date().toISOString()
+    };
+    await window.FamilyStorage.putRecord(rec);
+    await reloadLocal();
+    setAmount("0"); setNote(""); setSelCat(null);
+    showT("记账成功 ✓");
+  };
+
+  const handleDel = async (id) => {
+    await window.FamilyStorage.softDeleteRecord(id);
+    await reloadLocal();
+    showT("已删除");
+  };
+
+  const saveCurrs = async (list) => {
+    setCurrencies(list);
+    await window.FamilyStorage.setMeta('currencies', list);
+    showT("货币设置已保存 ✓");
+  };
+
+  const catData = () => {
+    const map = {};
+    monthRecs.forEach(r => { map[r.category] = (map[r.category] || 0) + (r.hkdAmount || r.amount); });
+    return CATS.map(c => ({ id: c.id, name: c.name, icon: c.icon, color: c.color, value: map[c.id] || 0 }))
+      .filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+  };
+
+  const last6 = () => {
+    const bars = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(viewMonth.getFullYear(), viewMonth.getMonth() - i, 1);
+      const t = records.filter(r => sameMonth(r.date, d)).reduce((s, r) => s + (r.hkdAmount || r.amount), 0);
+      bars.push({ label: (d.getMonth() + 1) + "月", value: t });
+    }
+    return bars;
+  };
+
+  const groupByDate = (recs) => {
+    const sorted = recs.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+    const map = {}, keys = [];
+    sorted.forEach(r => { if (!map[r.date]) { map[r.date] = []; keys.push(r.date); } map[r.date].push(r); });
+    return keys.map(k => [k, map[k]]);
+  };
+
+  const doExport = () => {
+    if (!records.length) { showT("暂无数据"); return; }
+    let csv = "\uFEFF日期,分类,原始金额,货币,港币金额,记账人,备注\n";
+    records.forEach(r => {
+      const mem = findMem(r.member);
+      csv += [r.date, r.categoryName, r.amount.toFixed(2), r.currency || "HKD", (r.hkdAmount || r.amount).toFixed(2), mem.name, '"' + escH(r.note || "") + '"'].join(",") + "\n";
+    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = "家庭记账_" + fmtD(new Date()) + ".csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    showT("导出成功 ✓");
+  };
+
+  const CS = { card: { background: "#fff", borderRadius: 16, margin: "12px 16px", padding: 16, boxShadow: "0 2px 8px rgba(0,0,0,.04)" } };
+
+  // 待同步数量
+  const pendingCount = records.filter(r => r._pending).length;
+
+  // ====== 顶栏（含同步按钮）======
+  const TopBar = ({ children }) => (
+    <div style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", color: "#fff", padding: "12px 16px 4px", display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: .85 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#7CFC9D' : '#ffb74d', display: 'inline-block' }} />
+        <span>{online ? '在线' : '离线'}</span>
+        {pendingCount > 0 && <span style={{ background: 'rgba(255,255,255,.25)', padding: '1px 6px', borderRadius: 8 }}>{pendingCount} 待同步</span>}
+      </div>
+      <button onClick={() => doSync()} disabled={syncing} style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: '#fff', borderRadius: 12, padding: '4px 12px', fontSize: 11, cursor: syncing ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ display: 'inline-block', transform: syncing ? 'rotate(360deg)' : 'none', transition: 'transform 1s linear' }}>{syncing ? '⟳' : '🔄'}</span>
+        {syncing ? '同步中' : '刷新'}
+      </button>
+    </div>
+  );
+
+  // ====== Tab 内容 ======
+  const renderAdd = () => {
+    const curr = findCurr(selCurrency, currencies);
+    const amt = parseFloat(amount) || 0;
+    return (
+      <div>
+        <TopBar />
+        <div style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", padding: "8px 20px 22px", borderRadius: "0 0 24px 24px", color: "#fff", textAlign: "center" }}>
+          <div style={{ fontSize: 13, opacity: .8 }}>{selCat ? (selCat.icon + " " + selCat.name) : "请选择分类"}</div>
+          <div style={{ fontSize: 36, fontWeight: 700, margin: "4px 0" }}>{curr.symbol + " " + amount}</div>
+          {selCurrency !== "HKD" && amt > 0 ? <div style={{ fontSize: 13, opacity: .8 }}>{"≈ HK$ " + (amt * curr.rate).toFixed(2)}</div> : null}
+        </div>
+        <div style={{ display: "flex", gap: 6, padding: "12px 16px 0", flexWrap: "wrap" }}>
+          {currencies.map(c => {
+            const s = selCurrency === c.code;
+            return <button key={c.code} onClick={() => setSelCurrency(c.code)} style={{ padding: "6px 14px", border: s ? "2px solid #667eea" : "2px solid #e8e8e8", borderRadius: 20, fontSize: 13, fontWeight: s ? 700 : 400, cursor: "pointer", background: s ? "rgba(102,126,234,.08)" : "#fff", color: s ? "#667eea" : "#666" }}>{c.symbol + " " + c.name}</button>;
+          })}
+        </div>
+        <div style={CS.card}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+            {CATS.map(c => {
+              const s = selCat && selCat.id === c.id;
+              return <button key={c.id} onClick={() => setSelCat(c)} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 4px", border: s ? ("2px solid " + c.color) : "2px solid transparent", borderRadius: 12, background: s ? (c.color + "15") : "#fafafa", cursor: "pointer" }}><span style={{ fontSize: 24 }}>{c.icon}</span><span style={{ fontSize: 11, marginTop: 4, color: "#555" }}>{c.name}</span></button>;
+            })}
+          </div>
+        </div>
+        <div style={{ ...CS.card, padding: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {MEMBERS.map(m => {
+              const s = selMember === m.id;
+              return <button key={m.id} onClick={() => setSelMember(m.id)} style={{ flex: 1, padding: "8px 0", border: s ? ("2px solid " + m.color) : "2px solid #eee", borderRadius: 10, background: s ? (m.color + "15") : "#fff", cursor: "pointer", fontSize: 14 }}>{m.avatar + " " + m.name}</button>;
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <button onClick={() => setShowDP(true)} style={{ flex: 1, padding: "8px 12px", border: "1px solid #eee", borderRadius: 10, background: "#fafafa", cursor: "pointer", fontSize: 13, textAlign: "left", color: "#555" }}>{"📅 " + selDate}</button>
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="添加备注..." style={{ flex: 2, padding: "8px 12px", border: "1px solid #eee", borderRadius: 10, fontSize: 13, outline: "none" }} />
+          </div>
+          <NumPad value={amount} onCh={v => setAmount(v)} onDel={() => setAmount(p => p.length <= 1 ? "0" : p.slice(0, -1))} />
+          <button onClick={handleSave} style={{ width: "100%", padding: 14, marginTop: 10, border: "none", borderRadius: 12, fontSize: 16, fontWeight: 700, background: "linear-gradient(135deg,#667eea,#764ba2)", color: "#fff", cursor: "pointer" }}>记一笔 ✓</button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderHome = () => {
+    const grouped = groupByDate(monthRecs);
+    return (
+      <div>
+        <TopBar />
+        <div style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", color: "#fff", padding: "8px 20px 24px", borderRadius: "0 0 24px 24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))} style={{ background: "rgba(255,255,255,.2)", border: "none", color: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer" }}>‹</button>
+            <span style={{ fontSize: 17, fontWeight: 600 }}>{monthStr(viewMonth)}</span>
+            <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))} style={{ background: "rgba(255,255,255,.2)", border: "none", color: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer" }}>›</button>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 12, opacity: .8, marginBottom: 4 }}>本月支出</div>
+            <div style={{ fontSize: 28, fontWeight: 700 }}>{"HK$ " + monthExp.toFixed(2)}</div>
+            <div style={{ fontSize: 12, opacity: .7, marginTop: 4 }}>{"共 " + monthRecs.length + " 笔"}</div>
+          </div>
+        </div>
+        {monthRecs.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 60, color: "#bbb" }}><div style={{ fontSize: 48, marginBottom: 12 }}>📒</div><div>本月暂无记录</div></div>
+        ) : grouped.map(g => {
+          const date = g[0], recs = g[1];
+          const dayT = recs.reduce((s, r) => s + (r.hkdAmount || r.amount), 0);
+          const d = new Date(date);
+          return (
+            <div key={date} style={CS.card}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 13, color: "#888" }}>
+                <span>{(d.getMonth() + 1) + "月" + d.getDate() + "日 " + WEEKDAYS[d.getDay()]}</span>
+                <span>{"HK$ " + dayT.toFixed(2)}</span>
+              </div>
+              {recs.map(r => {
+                const mem = findMem(r.member), curr = findCurr(r.currency || "HKD", currencies), isHKD = (r.currency || "HKD") === "HKD";
+                return (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f5f5f5" }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: (r.categoryColor || "#eee") + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{r.categoryIcon}</div>
+                    <div style={{ flex: 1, marginLeft: 12 }}>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: "#333" }}>
+                        {r.categoryName}
+                        {r._pending && <span style={{ marginLeft: 6, fontSize: 9, color: '#ffa726', background: '#fff3e0', padding: '1px 5px', borderRadius: 6 }}>待同步</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>{mem.avatar + " " + mem.name + (r.note ? " · " + r.note : "")}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "#e74c3c" }}>{isHKD ? ("HK$ " + r.amount.toFixed(2)) : (curr.symbol + " " + r.amount.toFixed(2))}</div>
+                      {!isHKD ? <div style={{ fontSize: 10, color: "#aaa" }}>{"≈ HK$ " + (r.hkdAmount || 0).toFixed(2)}</div> : null}
+                    </div>
+                    <button onClick={() => handleDel(r.id)} style={{ marginLeft: 6, border: "none", background: "none", color: "#ddd", fontSize: 16, cursor: "pointer", padding: 4 }}>×</button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderStats = () => {
+    const data = catData();
+    const pie = data.map(d => ({ name: d.name, value: d.value, color: d.color }));
+    return (
+      <div>
+        <TopBar />
+        <div style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", padding: "4px 20px 20px", borderRadius: "0 0 24px 24px", color: "#fff" }}>
+          <div style={{ textAlign: "center", fontSize: 17, fontWeight: 600, marginBottom: 8 }}>统计报表</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))} style={{ background: "rgba(255,255,255,.2)", border: "none", color: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer" }}>‹</button>
+            <span>{monthStr(viewMonth)}</span>
+            <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))} style={{ background: "rgba(255,255,255,.2)", border: "none", color: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer" }}>›</button>
+          </div>
+          <div style={{ textAlign: "center", marginTop: 12, fontSize: 24, fontWeight: 700 }}>{"HK$ " + monthExp.toFixed(2)}</div>
+        </div>
+        <div style={CS.card}><div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>分类占比</div><PieChart data={pie} /></div>
+        <div style={CS.card}><div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>近6个月趋势</div><BarChart data={last6()} /></div>
+        <div style={CS.card}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>分类排行</div>
+          {data.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 16 }}>暂无数据</div> :
+            data.map(d => {
+              const pct = monthExp > 0 ? (d.value / monthExp * 100) : 0;
+              return (
+                <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #f5f5f5" }}>
+                  <span style={{ fontSize: 22 }}>{d.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}><span style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</span><span style={{ fontSize: 13, fontWeight: 600 }}>{"HK$ " + d.value.toFixed(2)}</span></div>
+                    <div style={{ background: "#f0f0f0", borderRadius: 3, height: 5, overflow: "hidden" }}><div style={{ width: pct + "%", height: "100%", background: d.color, borderRadius: 3 }} /></div>
+                  </div>
+                  <span style={{ fontSize: 12, color: "#999", width: 36, textAlign: "right" }}>{pct.toFixed(0) + "%"}</span>
+                </div>
+              );
+            })}
+        </div>
+        <div style={CS.card}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>成员支出</div>
+          <div style={{ display: "flex", gap: 12 }}>
+            {MEMBERS.map(m => {
+              const mt = monthRecs.filter(r => r.member === m.id).reduce((s, r) => s + (r.hkdAmount || r.amount), 0);
+              return (
+                <div key={m.id} style={{ flex: 1, background: m.color + "10", borderRadius: 12, padding: 16, textAlign: "center" }}>
+                  <div style={{ fontSize: 32 }}>{m.avatar}</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, margin: "4px 0", color: "#555" }}>{m.name}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: m.color }}>{"HK$ " + mt.toFixed(0)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMine = () => {
+    const totalExp = records.reduce((s, r) => s + (r.hkdAmount || r.amount), 0);
+    const ds = {}; records.forEach(r => { ds[r.date] = true; }); const totalDays = Object.keys(ds).length;
+    const lastSyncStr = lastSync ? new Date(lastSync).toLocaleString('zh-CN') : '从未';
+    return (
+      <div>
+        <TopBar />
+        <div style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", padding: "12px 20px 28px", borderRadius: "0 0 24px 24px", color: "#fff", textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 4 }}>👨‍👩‍👧‍👦</div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>我们的小家</div>
+          <div style={{ fontSize: 13, opacity: .8, marginTop: 4 }}>{"记账 " + totalDays + " 天 · 共 " + records.length + " 笔"}</div>
+        </div>
+        <div style={{ padding: "12px 16px 0" }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 16, textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,.04)" }}>
+            <div style={{ fontSize: 12, color: "#999" }}>累计支出</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: "#e74c3c", marginTop: 4 }}>{"HK$ " + totalExp.toFixed(2)}</div>
+          </div>
+        </div>
+
+        <div style={CS.card}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>家庭配对码</div>
+          <div style={{ background: '#f5f3ff', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 4, color: '#667eea', fontFamily: 'monospace' }}>{familyId}</div>
+            <div style={{ fontSize: 11, color: '#999', marginTop: 6 }}>把这个码告诉家人，TA 就能加入这本账本</div>
+          </div>
+          <div style={{ fontSize: 11, color: '#aaa', marginTop: 10, textAlign: 'center' }}>上次同步：{lastSyncStr}</div>
+        </div>
+
+        <div style={CS.card}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>货币与汇率</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            {currencies.map(c => (
+              <span key={c.code} style={{ padding: "4px 10px", background: "#f5f5f5", borderRadius: 8, fontSize: 12, color: "#555" }}>{c.symbol + " " + c.name + (c.code !== "HKD" ? (" (1=" + c.rate + "HKD)") : "")}</span>
+            ))}
+          </div>
+          <button onClick={() => setShowCM(true)} style={{ width: "100%", padding: 10, border: "1px solid #667eea", borderRadius: 10, background: "#fff", color: "#667eea", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>管理货币与汇率</button>
+        </div>
+
+        <div style={CS.card}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>数据导出</div>
+          <button onClick={doExport} style={{ width: "100%", padding: 12, border: "none", borderRadius: 10, background: "linear-gradient(135deg,#667eea,#764ba2)", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>📊 一键导出 Excel (CSV)</button>
+        </div>
+
+        <div style={CS.card}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#333" }}>数据管理</div>
+          <button onClick={async () => {
+            if (confirm("确定清除所有数据？这会同步到家人的设备，不可撤销！")) {
+              await window.FamilyStorage.clearAllRecords();
+              await reloadLocal();
+              showT("数据已清除（待同步）");
+            }
+          }} style={{ width: "100%", padding: 12, border: "1px solid #e74c3c", borderRadius: 10, background: "#fff", color: "#e74c3c", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>清除所有数据</button>
+        </div>
+
+        <div style={{ textAlign: "center", padding: 24, color: "#ccc", fontSize: 12 }}>
+          家庭共享记账 v4.0<br />本地优先 · 云端同步 · 离线可用
+        </div>
+      </div>
+    );
+  };
+
+  const TABS = [
+    { id: "add", icon: "➕", label: "记账", big: true },
+    { id: "home", icon: "📒", label: "明细" },
+    { id: "stats", icon: "📊", label: "统计" },
+    { id: "mine", icon: "👤", label: "我的" }
+  ];
+
+  return (
+    <div style={{ maxWidth: 430, margin: "0 auto", background: "#f5f6fa", minHeight: "100vh", position: "relative", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", paddingBottom: 70 }}>
+      {toast ? <div style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,.75)", color: "#fff", padding: "10px 24px", borderRadius: 20, fontSize: 14, zIndex: 2000, pointerEvents: "none" }}>{toast}</div> : null}
+      {showDP ? <DateModal value={selDate} onPick={v => setSelDate(v)} onClose={() => setShowDP(false)} /> : null}
+      {showCM ? <CurrModal currs={currencies} onSave={saveCurrs} onClose={() => setShowCM(false)} /> : null}
+      {tab === "add" && renderAdd()}
+      {tab === "home" && renderHome()}
+      {tab === "stats" && renderStats()}
+      {tab === "mine" && renderMine()}
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", display: "flex", borderTop: "1px solid #eee", zIndex: 100 }}>
+        {TABS.map(t => {
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "8px 0 6px", textAlign: "center", border: "none", background: "none", color: active ? "#667eea" : "#999", fontSize: 11, fontWeight: active ? 600 : 400, cursor: "pointer" }}>
+              <div style={{ fontSize: t.big ? 26 : 22, lineHeight: "1" }}>{t.icon}</div>
+              <div>{t.label}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);

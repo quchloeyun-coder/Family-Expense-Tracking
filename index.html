@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#667eea" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="家账" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <title>家庭共享记账</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #f5f6fa; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+    input { -webkit-user-select: text; user-select: text; }
+    button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- 加载顺序：React → Babel → Firebase → 配置 → storage → app -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase v10 (modular, via CDN) -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+    import { getFirestore, collection, doc, getDoc, getDocs, setDoc, query, where }
+      from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+    import { getAuth, signInAnonymously }
+      from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+    import { firebaseConfig } from './firebase-config.js';
+
+    try {
+      if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes('YOUR_')) {
+        console.warn('Firebase 配置未填写，云同步将不可用');
+        window.FirebaseReady = false;
+      } else {
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        await signInAnonymously(auth); // 匿名登录满足安全规则
+        window.FirebaseDB = db;
+        window.FirebaseModule = { collection, doc, getDoc, getDocs, setDoc, query, where };
+        window.FirebaseReady = true;
+        console.log('Firebase ready');
+      }
+    } catch (e) {
+      console.error('Firebase 初始化失败', e);
+      window.FirebaseReady = false;
+    }
+    // 通知后续脚本
+    window.dispatchEvent(new Event('firebase-init-done'));
+  </script>
+
+  <!-- Storage 层（ES Module）→ 暴露到 window -->
+  <script type="module">
+    import * as Storage from './storage.js';
+    window.FamilyStorage = Storage;
+    window.dispatchEvent(new Event('storage-ready'));
+  </script>
+
+  <!-- 主应用：等 firebase 和 storage 都好再启动 -->
+  <script>
+    let fbDone = false, stDone = false;
+    function tryStart() {
+      if (!fbDone || !stDone) return;
+      // 把 app.js 作为 babel 编译的脚本注入
+      fetch('./app.js').then(r => r.text()).then(code => {
+        const s = document.createElement('script');
+        s.type = 'text/babel';
+        s.setAttribute('data-presets', 'react');
+        s.textContent = code;
+        document.body.appendChild(s);
+        // 触发 Babel 编译
+        if (window.Babel) Babel.transformScriptTags();
+      });
+    }
+    window.addEventListener('firebase-init-done', () => { fbDone = true; tryStart(); });
+    window.addEventListener('storage-ready', () => { stDone = true; tryStart(); });
+  </script>
+
+  <!-- 注册 Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW register failed', e));
+      });
+    }
+  </script>
+</body>
+</html>
