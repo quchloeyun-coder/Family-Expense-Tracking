@@ -162,7 +162,7 @@ export async function setMeta(key, value) {
 //
 // 增量优化：第二步只拉 updatedAt > lastSyncAt 的记录
 
-export async function syncWithFirestore(firestore, familyId, firebaseModule) {
+export async function syncWithFirestore(firestore, familyId, firebaseModule, forceFullPull = false) {
   if (!firestore || !familyId) throw new Error('Firestore 或 familyId 缺失');
   const { collection, doc, getDocs, setDoc, query, where } = firebaseModule;
 
@@ -176,12 +176,18 @@ export async function syncWithFirestore(firestore, familyId, firebaseModule) {
     await markSynced(r.id);
   }
 
-  // 2) 拉取增量
+  // 2) 拉取（forceFullPull 时全量拉取，否则增量）
   const lastSync = (await getMeta('lastSyncAt', 0)) || 0;
   let snapshot;
-  if (lastSync > 0) {
-    const q = query(recordsCol, where('updatedAt', '>', lastSync));
-    snapshot = await getDocs(q);
+  if (!forceFullPull && lastSync > 0) {
+    try {
+      const q = query(recordsCol, where('updatedAt', '>', lastSync));
+      snapshot = await getDocs(q);
+    } catch (e) {
+      // 如果增量查询失败（如缺少索引），回退到全量
+      console.warn('Incremental sync failed, falling back to full pull:', e);
+      snapshot = await getDocs(recordsCol);
+    }
   } else {
     snapshot = await getDocs(recordsCol);
   }
