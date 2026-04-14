@@ -244,11 +244,12 @@ function App(){
   var tabContent=null;
   if(tab==="add"){
     var curr=fCur(selCurrency,currencies);var a=parseFloat(amount)||0;
-    tabContent=h('div',null,TopBar,
-      h('div',{style:{background:"linear-gradient(135deg,#667eea,#764ba2)",padding:"4px 20px 16px",borderRadius:"0 0 24px 24px",color:"#fff",textAlign:"center"}},h('div',{style:{fontSize:12,opacity:.8}},selCat?selCat.icon+" "+selCat.name:"请选择分类"),h('div',{style:{fontSize:30,fontWeight:700,margin:"2px 0"}},curr.symbol+" "+amount),selCurrency!=="HKD"&&a>0?h('div',{style:{fontSize:12,opacity:.8}},"≈ HK$ "+fmtN(a*curr.rate)):null,h('div',{style:{fontSize:11,opacity:.6,marginTop:2}},me.avatar+" "+me.name+" 记账中")),
-      h('div',{style:{display:"flex",gap:5,padding:"8px 14px 0",flexWrap:"wrap"}},currencies.map(function(c){var s=selCurrency===c.code;return h('button',{key:c.code,onClick:function(){setSCur(c.code)},style:{padding:"4px 12px",border:s?"2px solid #667eea":"2px solid #e8e8e8",borderRadius:20,fontSize:12,fontWeight:s?700:400,background:s?"rgba(102,126,234,.08)":"#fff",color:s?"#667eea":"#666",cursor:"pointer"}},c.symbol+" "+c.name)})),
+    tabContent=h('div',{style:{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 70px)"}},TopBar,
+      h('div',{style:{background:"linear-gradient(135deg,#667eea,#764ba2)",padding:"16px 20px 24px",borderRadius:"0 0 24px 24px",color:"#fff",textAlign:"center"}},h('div',{style:{fontSize:12,opacity:.8,marginBottom:4}},selCat?selCat.icon+" "+selCat.name:"请选择分类"),h('div',{style:{fontSize:32,fontWeight:700,margin:"6px 0"}},curr.symbol+" "+amount),selCurrency!=="HKD"&&a>0?h('div',{style:{fontSize:12,opacity:.8}},"≈ HK$ "+fmtN(a*curr.rate)):null,h('div',{style:{fontSize:11,opacity:.6,marginTop:4}},me.avatar+" "+me.name+" 记账中")),
+      h('div',{style:{display:"flex",gap:5,padding:"10px 14px 0",flexWrap:"wrap"}},currencies.map(function(c){var s=selCurrency===c.code;return h('button',{key:c.code,onClick:function(){setSCur(c.code)},style:{padding:"4px 12px",border:s?"2px solid #667eea":"2px solid #e8e8e8",borderRadius:20,fontSize:12,fontWeight:s?700:400,background:s?"rgba(102,126,234,.08)":"#fff",color:s?"#667eea":"#666",cursor:"pointer"}},c.symbol+" "+c.name)})),
       h('div',{style:CS.card},h(CatPicker,{selCat:selCat,onSelect:function(c){setSC(c)}})),
-      h('div',{style:Object.assign({},CS.card,{padding:10})},
+      h('div',{style:{flex:1}}),
+      h('div',{style:Object.assign({},CS.card,{padding:10,marginBottom:0})},
         h('div',{style:{display:"flex",gap:6,marginBottom:8}},h('button',{onClick:function(){setSDP(true)},style:{flex:3,padding:"7px 10px",border:"1px solid #eee",borderRadius:10,background:"#fafafa",cursor:"pointer",fontSize:12,textAlign:"left",color:"#555"}},"📅 "+selDate+" "+WD[new Date(selDate).getDay()]),h('input',{value:note,onChange:function(e){setNote(e.target.value)},placeholder:"备注",style:{flex:2,padding:"7px 10px",border:"1px solid #eee",borderRadius:10,fontSize:12,outline:"none"}})),
         h(NumPad,{value:amount,onCh:function(v){setAmt(v)},onDel:function(){setAmt(function(p){return p.length<=1?"0":p.slice(0,-1)})}}),
         h('button',{onClick:save,style:{width:"100%",padding:12,marginTop:8,border:"none",borderRadius:12,fontSize:15,fontWeight:700,background:"linear-gradient(135deg,#667eea,#764ba2)",color:"#fff",cursor:"pointer"}},"记一笔 ✓")));
