@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>导入鲨鱼记账数据</title>
+<style>
+body{font-family:-apple-system,sans-serif;max-width:500px;margin:40px auto;padding:20px;background:#f5f6fa}
+h1{font-size:20px;text-align:center}
+.card{background:#fff;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.status{padding:12px;border-radius:10px;margin:10px 0;font-size:14px}
+.ok{background:#e8f5e9;color:#2e7d32}
+.err{background:#ffebee;color:#c62828}
+.info{background:#e3f2fd;color:#1565c0}
+.warn{background:#fff3e0;color:#e65100}
+button{width:100%;padding:14px;border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;margin:8px 0;font-family:inherit}
+.btn-go{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-go:disabled{background:#ccc;cursor:default}
+#log{background:#1a1a2e;color:#7CFC9D;border-radius:12px;padding:16px;font-family:monospace;font-size:13px;max-height:300px;overflow-y:auto;white-space:pre-wrap;margin-top:16px}
+.progress{background:#e0e0e0;border-radius:6px;height:10px;overflow:hidden;margin:10px 0}
+.progress-bar{height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:6px;transition:width .3s}
+</style>
+</head>
+<body>
+<h1>📦 导入鲨鱼记账数据</h1>
+
+<div class="card">
+<div class="status info">1812 条记录 · 已配置好 Firebase 和家庭码 THF93L</div>
+<div id="statusBox"></div>
+<div class="progress" id="progressWrap" style="display:none"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+<button class="btn-go" id="startBtn" onclick="startImport()">🚀 开始导入</button>
+</div>
+
+<div id="log"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+import { getFirestore, doc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAWJjEBQLwuB-6TQ2Ivp37r7jKllrHLMVU",
+  authDomain: "family-expense-tracker-92719.firebaseapp.com",
+  projectId: "family-expense-tracker-92719",
+  storageBucket: "family-expense-tracker-92719.firebasestorage.app",
+  messagingSenderId: "563542677117",
+  appId: "1:563542677117:web:72d533471b81b9a1878314"
+};
+const FAMILY_ID = "THF93L";
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function setStatus(msg, cls) {
+  document.getElementById('statusBox').innerHTML = '<div class="status ' + cls + '">' + msg + '</div>';
+}
+
+function setProgress(pct) {
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+window.startImport = async function() {
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  btn.textContent = '导入中...';
+
+  try {
+    log('🔑 匿名登录 Firebase...');
+    await signInAnonymously(auth);
+    log('✅ 登录成功');
+
+    log('📂 加载数据...');
+    const resp = await fetch('./import.json');
+    const records = await resp.json();
+    log('📊 共 ' + records.length + ' 条记录');
+
+    log('📤 开始写入 families/' + FAMILY_ID + '/records ...');
+    const BATCH_SIZE = 400;
+    let written = 0;
+
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      const slice = records.slice(i, i + BATCH_SIZE);
+      for (const r of slice) {
+        const ref = doc(db, 'families', FAMILY_ID, 'records', r.id);
+        batch.set(ref, r);
+      }
+      await batch.commit();
+      written += slice.length;
+      const pct = Math.round(written / records.length * 100);
+      setProgress(pct);
+      log('   ✓ 已写入 ' + written + ' / ' + records.length + ' (' + pct + '%)');
+    }
+
+    log('');
+    log('🎉 全部导入完成！');
+    log('');
+    log('下一步：打开手机 app → 点 🔄 刷新');
+    setStatus('✅ 导入完成！共 ' + records.length + ' 条。去手机 app 点刷新吧！', 'ok');
+    btn.textContent = '✅ 导入完成';
+
+  } catch (e) {
+    log('❌ 出错：' + e.message);
+    setStatus('导入失败：' + e.message, 'err');
+    btn.disabled = false;
+    btn.textContent = '🚀 重试';
+  }
+};
+</script>
+</body>
+</html>
