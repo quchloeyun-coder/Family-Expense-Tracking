@@ -11,21 +11,37 @@
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <title>家庭共享记账</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #f5f6fa; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
-    input { -webkit-user-select: text; user-select: text; }
+    html, body { margin: 0; padding: 0; background: #f5f6fa; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    input, textarea { -webkit-user-select: text; user-select: text; }
     button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
     * { box-sizing: border-box; }
+    /* Splash screen */
+    #splash { position: fixed; inset: 0; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: opacity .3s; }
+    #splash.hide { opacity: 0; pointer-events: none; }
+    #splash .logo { font-size: 56px; margin-bottom: 12px; }
+    #splash .title { color: #fff; font-size: 20px; font-weight: 700; }
+    #splash .dots { display: flex; gap: 6px; margin-top: 20px; }
+    #splash .dots span { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.4); animation: pulse 1.2s infinite; }
+    #splash .dots span:nth-child(2) { animation-delay: .2s; }
+    #splash .dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes pulse { 0%,80%,100% { transform: scale(.6); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
   </style>
 </head>
 <body>
+  <!-- Splash screen: visible immediately, hidden when app loads -->
+  <div id="splash">
+    <div class="logo">💰</div>
+    <div class="title">家庭记账</div>
+    <div class="dots"><span></span><span></span><span></span></div>
+  </div>
+
   <div id="root"></div>
 
-  <!-- 加载顺序：React → Babel → Firebase → 配置 → storage → app -->
+  <!-- React only (no Babel!) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Firebase v10 (modular, via CDN) -->
+  <!-- Firebase v10 -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
     import { getFirestore, collection, doc, getDoc, getDocs, setDoc, query, where }
@@ -36,58 +52,55 @@
 
     try {
       if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes('YOUR_')) {
-        console.warn('Firebase 配置未填写，云同步将不可用');
         window.FirebaseReady = false;
       } else {
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        await signInAnonymously(auth); // 匿名登录满足安全规则
+        await signInAnonymously(auth);
         window.FirebaseDB = db;
         window.FirebaseModule = { collection, doc, getDoc, getDocs, setDoc, query, where };
         window.FirebaseReady = true;
-        console.log('Firebase ready');
       }
     } catch (e) {
-      console.error('Firebase 初始化失败', e);
+      console.error('Firebase init failed', e);
       window.FirebaseReady = false;
     }
-    // 通知后续脚本
     window.dispatchEvent(new Event('firebase-init-done'));
   </script>
 
-  <!-- Storage 层（ES Module）→ 暴露到 window -->
+  <!-- Storage layer -->
   <script type="module">
     import * as Storage from './storage.js';
     window.FamilyStorage = Storage;
     window.dispatchEvent(new Event('storage-ready'));
   </script>
 
-  <!-- 主应用：等 firebase 和 storage 都好再启动 -->
+  <!-- App loader: no Babel needed, app.js is plain JS -->
   <script>
     let fbDone = false, stDone = false;
     function tryStart() {
       if (!fbDone || !stDone) return;
-      // 把 app.js 作为 babel 编译的脚本注入
-      fetch('./app.js').then(r => r.text()).then(code => {
-        const s = document.createElement('script');
-        s.type = 'text/babel';
-        s.setAttribute('data-presets', 'react');
-        s.textContent = code;
-        document.body.appendChild(s);
-        // 触发 Babel 编译
-        if (window.Babel) Babel.transformScriptTags();
-      });
+      const s = document.createElement('script');
+      s.src = './app.js';
+      s.onload = () => {
+        // Hide splash after app renders
+        setTimeout(() => {
+          const sp = document.getElementById('splash');
+          if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 300); }
+        }, 100);
+      };
+      document.body.appendChild(s);
     }
     window.addEventListener('firebase-init-done', () => { fbDone = true; tryStart(); });
     window.addEventListener('storage-ready', () => { stDone = true; tryStart(); });
   </script>
 
-  <!-- 注册 Service Worker -->
+  <!-- Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW register failed', e));
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
       });
     }
   </script>

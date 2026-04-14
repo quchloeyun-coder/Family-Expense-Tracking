@@ -1,5 +1,5 @@
 // Service Worker - 缓存应用外壳，让 PWA 离线可用
-const CACHE = 'family-budget-v11';
+const CACHE = 'family-budget-v12';
 const ASSETS = [
   './',
   './index.html',
