@@ -140,9 +140,10 @@ function PairingScreen(props){
 
 // Category detail page
 function CatDetail(props){
-  var cat=props.cat,records=props.records,viewMonth=props.viewMonth,statMode=props.statMode,onBack=props.onBack;
+  var cat=props.cat,records=props.records,viewMonth=props.viewMonth,statMode=props.statMode,onBack=props.onBack,onEdit=props.onEdit,currencies=props.currencies;
   var _dm=us(statMode),dm=_dm[0],setDm=_dm[1];
   var _vm=us(viewMonth),vm=_vm[0],setVm=_vm[1];
+  var _editRec=us(null),editRec=_editRec[0],setEditRec=_editRec[1];
   var isY=dm==="year";
   var recs=records.filter(function(r){return r.category===cat.id&&(isY?sameY(r.date,vm):sameM(r.date,vm))});
   var total=recs.reduce(function(s,r){return s+(r.hkdAmount||r.amount)},0);
@@ -152,13 +153,14 @@ function CatDetail(props){
   else{for(var i=11;i>=0;i--){var d=new Date(vm.getFullYear(),vm.getMonth()-i,1);lineData.push({label:(d.getMonth()+1)+"月",value:records.filter(function(r){return r.category===cat.id&&sameM(r.date,d)}).reduce(function(s,r){return s+(r.hkdAmount||r.amount)},0)})}}
   var CS={card:{background:"#fff",borderRadius:14,margin:"8px 14px",padding:12,boxShadow:"0 2px 8px rgba(0,0,0,.04)"}};
   return h('div',null,
+    editRec?h(EditPanel,{record:editRec,onSave:function(updates){onEdit(editRec,updates);setEditRec(null)},onClose:function(){setEditRec(null)},currencies:currencies}):null,
     h('div',{style:{background:"linear-gradient(135deg,#667eea,#764ba2)",color:"#fff",paddingTop:"max(env(safe-area-inset-top,0px),48px)",paddingLeft:16,paddingRight:16,paddingBottom:20,borderRadius:"0 0 24px 24px"}},
       h('div',{style:{display:"flex",alignItems:"center",marginBottom:10}},h('button',{onClick:onBack,style:{background:"rgba(255,255,255,.2)",border:"none",color:"#fff",borderRadius:8,padding:"4px 12px",cursor:"pointer",fontSize:14}},"‹ 返回"),h('span',{style:{flex:1,textAlign:"center",fontSize:17,fontWeight:600}},cat.icon+" "+cat.name),h('div',{style:{width:50}})),
       h('div',{style:{display:"flex",justifyContent:"center",gap:8,marginBottom:10}},["month","year"].map(function(m){return h('button',{key:m,onClick:function(){setDm(m)},style:{padding:"4px 16px",borderRadius:20,border:"none",background:dm===m?"rgba(255,255,255,.3)":"rgba(255,255,255,.1)",color:"#fff",fontSize:12,fontWeight:dm===m?600:400,cursor:"pointer"}},m==="month"?"月":"年")})),
       h('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},h('button',{onClick:function(){if(isY)setVm(new Date(vm.getFullYear()-1,vm.getMonth(),1));else setVm(new Date(vm.getFullYear(),vm.getMonth()-1,1))},style:{background:"rgba(255,255,255,.2)",border:"none",color:"#fff",borderRadius:8,padding:"4px 12px",cursor:"pointer"}},"‹"),h('span',null,isY?yStr(vm):mStr(vm)),h('button',{onClick:function(){if(isY)setVm(new Date(vm.getFullYear()+1,vm.getMonth(),1));else setVm(new Date(vm.getFullYear(),vm.getMonth()+1,1))},style:{background:"rgba(255,255,255,.2)",border:"none",color:"#fff",borderRadius:8,padding:"4px 12px",cursor:"pointer"}},"›")),
       h('div',{style:{textAlign:"center",marginTop:10,fontSize:24,fontWeight:700}},"HK$ "+fmtN(total,0))),
     h('div',{style:CS.card},h('div',{style:{fontSize:14,fontWeight:600,marginBottom:12,color:"#333"}},isY?"各月趋势（HK$k）":"过去12个月（HK$k）"),h(LineChart,{data:lineData})),
-    h('div',{style:CS.card},h('div',{style:{fontSize:14,fontWeight:600,marginBottom:12,color:"#333"}},"明细（"+sorted.length+"笔）"),sorted.length===0?h('div',{style:{color:"#bbb",textAlign:"center",padding:16}},"暂无数据"):sorted.map(function(r){var mem=fMem(r.member);return h('div',{key:r.id,style:{display:"flex",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f5f5f5"}},h('div',{style:{flex:1}},h('div',{style:{fontSize:13,color:"#333"}},r.date+" "+mem.avatar),h('div',{style:{fontSize:11,color:"#aaa",marginTop:2}},r.note||"-")),h('div',{style:{fontSize:14,fontWeight:600,color:"#e74c3c"}},fmtN(r.hkdAmount||r.amount)))})));
+    h('div',{style:CS.card},h('div',{style:{fontSize:14,fontWeight:600,marginBottom:12,color:"#333"}},"明细（"+sorted.length+"笔）"),sorted.length===0?h('div',{style:{color:"#bbb",textAlign:"center",padding:16}},"暂无数据"):sorted.map(function(r){var mem=fMem(r.member);var cur=fCur(r.currency||"HKD",currencies);var ih=(r.currency||"HKD")==="HKD";return h('div',{key:r.id,onClick:function(){setEditRec(r)},style:{display:"flex",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f5f5f5",cursor:"pointer"}},h('div',{style:{width:32,height:32,borderRadius:8,background:(r.categoryColor||"#eee")+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}},r.categoryIcon),h('div',{style:{flex:1,marginLeft:10}},h('div',{style:{fontSize:13,color:"#333"}},r.date+" "+mem.avatar+" "+mem.name),h('div',{style:{fontSize:11,color:"#aaa",marginTop:2}},r.note||"-")),h('div',{style:{textAlign:"right"}},h('div',{style:{fontSize:14,fontWeight:600,color:"#e74c3c"}},ih?"HK$ "+fmtN(r.amount):cur.symbol+" "+fmtN(r.amount)),!ih?h('div',{style:{fontSize:10,color:"#aaa"}},"≈HK$"+fmtN(r.hkdAmount||0)):null))})));
 }
 
 // ========== MAIN APP ==========
@@ -236,7 +238,7 @@ function App(){
 
   var TopBar=h('div',{style:{background:"linear-gradient(135deg,#667eea,#764ba2)",color:"#fff",paddingTop:"max(env(safe-area-inset-top,0px),48px)",paddingLeft:16,paddingRight:16,paddingBottom:4,display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:11}},h('div',{style:{display:'flex',alignItems:'center',gap:6,opacity:.85}},h('span',{style:{width:6,height:6,borderRadius:'50%',background:online?'#7CFC9D':'#ffb74d',display:'inline-block'}}),h('span',null,online?'在线':'离线'),pc>0?h('span',{style:{background:'rgba(255,255,255,.25)',padding:'1px 6px',borderRadius:8}},pc+"待同步"):null),h('button',{onClick:function(){doSync()},disabled:syncing,style:{background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:12,padding:'4px 12px',fontSize:11,cursor:syncing?'default':'pointer',display:'flex',alignItems:'center',gap:4}},syncing?'⟳ 同步中':'🔄 刷新'));
 
-  if(drillCat)return h(CatDetail,{cat:drillCat,records:records,viewMonth:viewMonth,statMode:statMode,onBack:function(){setDC(null)}});
+  if(drillCat)return h(CatDetail,{cat:drillCat,records:records,viewMonth:viewMonth,statMode:statMode,currencies:currencies,onBack:function(){setDC(null)},onEdit:function(rec,updates){var updated=Object.assign({},rec,updates);window.FamilyStorage.putRecord(updated).then(function(){return reload()}).then(function(){showT("已修改")})}});
 
   // Tab content
   var tabContent=null;
