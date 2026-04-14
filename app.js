@@ -193,6 +193,8 @@ function App(){
   ue(function(){var on=function(){setOL(true)},off=function(){setOL(false)};window.addEventListener('online',on);window.addEventListener('offline',off);return function(){window.removeEventListener('online',on);window.removeEventListener('offline',off)}},[]);
   var reload=uc(function(){return window.FamilyStorage.getAllRecords().then(function(r){r.sort(function(a,b){return new Date(b.date)-new Date(a.date)||(b.updatedAt||0)-(a.updatedAt||0)});setRecs(r);return Promise.all([window.FamilyStorage.getMeta('currencies',DEF_CURR),window.FamilyStorage.getMeta('lastSyncAt',0),window.FamilyStorage.getMeta('myRole',null),window.FamilyStorage.getMeta('familyName','我们的小家')])}).then(function(res){setCurrs(res[0]);setLS(res[1]);if(res[2])setMR(res[2]);setFN(res[3])})},[]);
   ue(function(){window.FamilyStorage.getFamilyId().then(function(f){if(!f){setNP(true);setLd(false);return}setFID(f);reload().then(function(){setLd(false);if(navigator.onLine&&window.FirebaseReady)doSync(f,true)})})},[]);
+  // Listen for Firebase becoming ready (loads async in background)
+  ue(function(){function onFBReady(){if(familyId&&navigator.onLine)doSync(familyId,true)}window.addEventListener('firebase-ready',onFBReady);return function(){window.removeEventListener('firebase-ready',onFBReady)}},[familyId]);
   ue(function(){var s=new Set();records.forEach(function(r){if(r.member)s.add(r.member)});setMC(Math.max(s.size,1))},[records]);
 
   function doSync(fid,silent){

@@ -11,97 +11,77 @@
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <title>家庭共享记账</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #f5f6fa; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    input, textarea { -webkit-user-select: text; user-select: text; }
-    button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
-    * { box-sizing: border-box; }
-    /* Splash screen */
-    #splash { position: fixed; inset: 0; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: opacity .3s; }
-    #splash.hide { opacity: 0; pointer-events: none; }
-    #splash .logo { font-size: 56px; margin-bottom: 12px; }
-    #splash .title { color: #fff; font-size: 20px; font-weight: 700; }
-    #splash .dots { display: flex; gap: 6px; margin-top: 20px; }
-    #splash .dots span { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.4); animation: pulse 1.2s infinite; }
-    #splash .dots span:nth-child(2) { animation-delay: .2s; }
-    #splash .dots span:nth-child(3) { animation-delay: .4s; }
-    @keyframes pulse { 0%,80%,100% { transform: scale(.6); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
+    html,body{margin:0;padding:0;background:#f5f6fa;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+    input,textarea{-webkit-user-select:text;user-select:text}
+    button{font-family:inherit;-webkit-tap-highlight-color:transparent}
+    *{box-sizing:border-box}
+    #splash{position:fixed;inset:0;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .3s}
+    #splash.hide{opacity:0;pointer-events:none}
+    #splash .logo{font-size:56px;margin-bottom:12px}
+    #splash .title{color:#fff;font-size:20px;font-weight:700}
+    #splash .dots{display:flex;gap:6px;margin-top:20px}
+    #splash .dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.4);animation:pulse 1.2s infinite}
+    #splash .dots span:nth-child(2){animation-delay:.2s}
+    #splash .dots span:nth-child(3){animation-delay:.4s}
+    @keyframes pulse{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1);opacity:1}}
   </style>
 </head>
 <body>
-  <!-- Splash screen: visible immediately, hidden when app loads -->
   <div id="splash">
     <div class="logo">💰</div>
     <div class="title">家庭记账</div>
     <div class="dots"><span></span><span></span><span></span></div>
   </div>
-
   <div id="root"></div>
 
-  <!-- React only (no Babel!) -->
+  <!-- Step 1: React (cached by SW, loads instantly) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 
-  <!-- Firebase v10 -->
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
-    import { getFirestore, collection, doc, getDoc, getDocs, setDoc, query, where }
-      from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
-    import { getAuth, signInAnonymously }
-      from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
-    import { firebaseConfig } from './firebase-config.js';
-
-    try {
-      if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes('YOUR_')) {
-        window.FirebaseReady = false;
-      } else {
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        await signInAnonymously(auth);
-        window.FirebaseDB = db;
-        window.FirebaseModule = { collection, doc, getDoc, getDocs, setDoc, query, where };
-        window.FirebaseReady = true;
-      }
-    } catch (e) {
-      console.error('Firebase init failed', e);
-      window.FirebaseReady = false;
-    }
-    window.dispatchEvent(new Event('firebase-init-done'));
-  </script>
-
-  <!-- Storage layer -->
+  <!-- Step 2: Storage layer (local IndexedDB, no network needed) -->
   <script type="module">
     import * as Storage from './storage.js';
     window.FamilyStorage = Storage;
-    window.dispatchEvent(new Event('storage-ready'));
-  </script>
 
-  <!-- App loader: no Babel needed, app.js is plain JS -->
-  <script>
-    let fbDone = false, stDone = false;
-    function tryStart() {
-      if (!fbDone || !stDone) return;
-      const s = document.createElement('script');
-      s.src = './app.js';
-      s.onload = () => {
-        // Hide splash after app renders
-        setTimeout(() => {
-          const sp = document.getElementById('splash');
-          if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 300); }
-        }, 100);
-      };
-      document.body.appendChild(s);
+    // Step 3: Load app IMMEDIATELY - don't wait for Firebase
+    window.FirebaseReady = false;
+    var s = document.createElement('script');
+    s.src = './app.js';
+    s.onload = function() {
+      setTimeout(function() {
+        var sp = document.getElementById('splash');
+        if (sp) { sp.classList.add('hide'); setTimeout(function() { sp.remove(); }, 300); }
+      }, 50);
+    };
+    document.body.appendChild(s);
+
+    // Step 4: Firebase initializes in background (async, non-blocking)
+    try {
+      var { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js');
+      var { getFirestore, collection, doc, getDoc, getDocs, setDoc, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js');
+      var { getAuth, signInAnonymously } = await import('https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js');
+      var { firebaseConfig } = await import('./firebase-config.js');
+
+      if (firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('YOUR_')) {
+        var app = initializeApp(firebaseConfig);
+        var db = getFirestore(app);
+        var auth = getAuth(app);
+        await signInAnonymously(auth);
+        window.FirebaseDB = db;
+        window.FirebaseModule = { collection: collection, doc: doc, getDoc: getDoc, getDocs: getDocs, setDoc: setDoc, query: query, where: where };
+        window.FirebaseReady = true;
+        // Notify app that Firebase is now available for sync
+        window.dispatchEvent(new Event('firebase-ready'));
+      }
+    } catch (e) {
+      console.error('Firebase init failed (sync unavailable, local data ok)', e);
     }
-    window.addEventListener('firebase-init-done', () => { fbDone = true; tryStart(); });
-    window.addEventListener('storage-ready', () => { stDone = true; tryStart(); });
   </script>
 
   <!-- Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
-      });
+      navigator.serviceWorker.register('./sw.js').catch(function() {});
     }
   </script>
 </body>
