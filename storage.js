@@ -105,11 +105,19 @@ async function applyRemoteRecord(record) {
     const getReq = s.get(record.id);
     getReq.onsuccess = () => {
       const existing = getReq.result;
-      // 合并：取 updatedAt 较新的；如果本地有 _pending 且更新，保留本地
-      if (existing && existing.updatedAt >= record.updatedAt) {
+      // 如果本地没有这条记录，直接写入
+      if (!existing) {
+        const putReq = s.put({ ...record, _pending: false });
+        putReq.onsuccess = () => resolve(record);
+        putReq.onerror = () => reject(putReq.error);
+        return;
+      }
+      // 如果本地有 pending 修改且更新时间更新，保留本地版本
+      if (existing._pending && existing.updatedAt > record.updatedAt) {
         resolve(existing);
         return;
       }
+      // 否则接受远端版本
       const merged = { ...record, _pending: false };
       const putReq = s.put(merged);
       putReq.onsuccess = () => resolve(merged);
@@ -176,21 +184,8 @@ export async function syncWithFirestore(firestore, familyId, firebaseModule, for
     await markSynced(r.id);
   }
 
-  // 2) 拉取（forceFullPull 时全量拉取，否则增量）
-  const lastSync = (await getMeta('lastSyncAt', 0)) || 0;
-  let snapshot;
-  if (!forceFullPull && lastSync > 0) {
-    try {
-      const q = query(recordsCol, where('updatedAt', '>', lastSync));
-      snapshot = await getDocs(q);
-    } catch (e) {
-      // 如果增量查询失败（如缺少索引），回退到全量
-      console.warn('Incremental sync failed, falling back to full pull:', e);
-      snapshot = await getDocs(recordsCol);
-    }
-  } else {
-    snapshot = await getDocs(recordsCol);
-  }
+  // 2) 全量拉取（确保不遗漏任何记录）
+  const snapshot = await getDocs(recordsCol);
   let pulled = 0;
   for (const docSnap of snapshot.docs) {
     await applyRemoteRecord(docSnap.data());
