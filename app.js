@@ -55,11 +55,8 @@ function NumPad(props){
 
 function CatPicker(props){
   var selCat=props.selCat,onSelect=props.onSelect;
-  var _pg=us(0),page=_pg[0],setPg=_pg[1];
-  var _tx=us(null),touchX=_tx[0],setTX=_tx[1];
   var _pr=us(null),pr=_pr[0],setPr=_pr[1];
-  var pages=[CATS_P1,CATS_P2];
-  return h('div',null,h('div',{onTouchStart:function(e){setTX(e.touches[0].clientX)},onTouchEnd:function(e){if(touchX===null)return;var d=e.changedTouches[0].clientX-touchX;if(d<-50&&page<1)setPg(1);if(d>50&&page>0)setPg(0);setTX(null)},style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}},pages[page].map(function(c){var s=selCat&&selCat.id===c.id;var p=pr===c.id;return h('button',{key:c.id,onClick:function(){setPr(c.id);setTimeout(function(){setPr(null)},150);onSelect(c)},style:{display:"flex",flexDirection:"column",alignItems:"center",padding:"8px 2px",border:s?"2px solid "+c.color:"2px solid transparent",borderRadius:10,background:s?c.color+"15":p?"#eee":"#fafafa",cursor:"pointer",transition:"all .1s",transform:p?"scale(0.93)":"scale(1)"}},h('span',{style:{fontSize:22}},c.icon),h('span',{style:{fontSize:10,marginTop:2,color:"#555"}},c.name))})),h('div',{style:{display:"flex",justifyContent:"center",gap:6,marginTop:6}},pages.map(function(_,i){return h('span',{key:i,onClick:function(){setPg(i)},style:{width:i===page?16:6,height:6,borderRadius:3,background:i===page?"#667eea":"#ddd",transition:"all .2s",cursor:"pointer"}})})));
+  return h('div',{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}},CATS.map(function(c){var s=selCat&&selCat.id===c.id;var p=pr===c.id;return h('button',{key:c.id,onClick:function(){setPr(c.id);setTimeout(function(){setPr(null)},150);onSelect(c)},style:{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 2px",border:s?"2px solid "+c.color:"2px solid transparent",borderRadius:10,background:s?c.color+"15":p?"#eee":"#fafafa",cursor:"pointer",transition:"all .1s",transform:p?"scale(0.93)":"scale(1)"}},h('span',{style:{fontSize:20}},c.icon),h('span',{style:{fontSize:9,marginTop:1,color:"#555"}},c.name))}));
 }
 
 function DateModal(props){
@@ -244,15 +241,14 @@ function App(){
   var tabContent=null;
   if(tab==="add"){
     var curr=fCur(selCurrency,currencies);var a=parseFloat(amount)||0;
-    tabContent=h('div',{style:{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 70px)"}},TopBar,
-      h('div',{style:{background:"linear-gradient(135deg,#667eea,#764ba2)",padding:"16px 20px 24px",borderRadius:"0 0 24px 24px",color:"#fff",textAlign:"center"}},h('div',{style:{fontSize:12,opacity:.8,marginBottom:4}},selCat?selCat.icon+" "+selCat.name:"请选择分类"),h('div',{style:{fontSize:32,fontWeight:700,margin:"6px 0"}},curr.symbol+" "+amount),selCurrency!=="HKD"&&a>0?h('div',{style:{fontSize:12,opacity:.8}},"≈ HK$ "+fmtN(a*curr.rate)):null,h('div',{style:{fontSize:11,opacity:.6,marginTop:4}},me.avatar+" "+me.name+" 记账中")),
-      h('div',{style:{display:"flex",gap:5,padding:"10px 14px 0",flexWrap:"wrap"}},currencies.map(function(c){var s=selCurrency===c.code;return h('button',{key:c.code,onClick:function(){setSCur(c.code)},style:{padding:"4px 12px",border:s?"2px solid #667eea":"2px solid #e8e8e8",borderRadius:20,fontSize:12,fontWeight:s?700:400,background:s?"rgba(102,126,234,.08)":"#fff",color:s?"#667eea":"#666",cursor:"pointer"}},c.symbol+" "+c.name)})),
-      h('div',{style:CS.card},h(CatPicker,{selCat:selCat,onSelect:function(c){setSC(c)}})),
-      h('div',{style:{flex:1}}),
-      h('div',{style:Object.assign({},CS.card,{padding:10,marginBottom:0})},
-        h('div',{style:{display:"flex",gap:6,marginBottom:8}},h('button',{onClick:function(){setSDP(true)},style:{flex:3,padding:"7px 10px",border:"1px solid #eee",borderRadius:10,background:"#fafafa",cursor:"pointer",fontSize:12,textAlign:"left",color:"#555"}},"📅 "+selDate+" "+WD[new Date(selDate).getDay()]),h('input',{value:note,onChange:function(e){setNote(e.target.value)},placeholder:"备注",style:{flex:2,padding:"7px 10px",border:"1px solid #eee",borderRadius:10,fontSize:12,outline:"none"}})),
-        h(NumPad,{value:amount,onCh:function(v){setAmt(v)},onDel:function(){setAmt(function(p){return p.length<=1?"0":p.slice(0,-1)})}}),
-        h('button',{onClick:save,style:{width:"100%",padding:12,marginTop:8,border:"none",borderRadius:12,fontSize:15,fontWeight:700,background:"linear-gradient(135deg,#667eea,#764ba2)",color:"#fff",cursor:"pointer"}},"记一笔 ✓")));
+    tabContent=h('div',{style:{display:"flex",flexDirection:"column",height:"calc(100vh - 70px)",overflow:"hidden"}},TopBar,
+      h('div',{style:{background:"linear-gradient(135deg,#667eea,#764ba2)",padding:"10px 20px 18px",borderRadius:"0 0 24px 24px",color:"#fff",textAlign:"center"}},h('div',{style:{fontSize:12,opacity:.8}},selCat?selCat.icon+" "+selCat.name:"请选择分类"),h('div',{style:{fontSize:28,fontWeight:700,margin:"2px 0"}},curr.symbol+" "+amount),selCurrency!=="HKD"&&a>0?h('div',{style:{fontSize:12,opacity:.8}},"≈ HK$ "+fmtN(a*curr.rate)):null,h('div',{style:{fontSize:11,opacity:.6,marginTop:2}},me.avatar+" "+me.name+" 记账中")),
+      h('div',{style:{display:"flex",gap:5,padding:"6px 14px 0",flexWrap:"wrap"}},currencies.map(function(c){var s=selCurrency===c.code;return h('button',{key:c.code,onClick:function(){setSCur(c.code)},style:{padding:"3px 10px",border:s?"2px solid #667eea":"2px solid #e8e8e8",borderRadius:20,fontSize:11,fontWeight:s?700:400,background:s?"rgba(102,126,234,.08)":"#fff",color:s?"#667eea":"#666",cursor:"pointer"}},c.symbol+" "+c.name)})),
+      h('div',{style:{background:"#fff",borderRadius:14,margin:"6px 14px",padding:"8px 10px",boxShadow:"0 2px 8px rgba(0,0,0,.04)"}},h(CatPicker,{selCat:selCat,onSelect:function(c){setSC(c)}})),
+      h('div',{style:{background:"#fff",borderRadius:14,margin:"0 14px",padding:"8px 10px",boxShadow:"0 2px 8px rgba(0,0,0,.04)",flex:1,display:"flex",flexDirection:"column"}},
+        h('div',{style:{display:"flex",gap:6,marginBottom:6}},h('button',{onClick:function(){setSDP(true)},style:{flex:3,padding:"6px 10px",border:"1px solid #eee",borderRadius:10,background:"#fafafa",cursor:"pointer",fontSize:12,textAlign:"left",color:"#555"}},"📅 "+selDate+" "+WD[new Date(selDate).getDay()]),h('input',{value:note,onChange:function(e){setNote(e.target.value)},placeholder:"备注",style:{flex:2,padding:"6px 10px",border:"1px solid #eee",borderRadius:10,fontSize:12,outline:"none"}})),
+        h('div',{style:{flex:1}},h(NumPad,{value:amount,onCh:function(v){setAmt(v)},onDel:function(){setAmt(function(p){return p.length<=1?"0":p.slice(0,-1)})}})),
+        h('button',{onClick:save,style:{width:"100%",padding:10,marginTop:4,border:"none",borderRadius:12,fontSize:15,fontWeight:700,background:"linear-gradient(135deg,#667eea,#764ba2)",color:"#fff",cursor:"pointer"}},"记一笔 ✓")));
   }else if(tab==="home"){
     var gd=groupByDate(mRecs);
     tabContent=h('div',null,TopBar,
