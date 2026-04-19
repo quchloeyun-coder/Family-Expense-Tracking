@@ -1,7 +1,7 @@
 // Service Worker v13 - Cache-first + background update
 // Opens instantly from cache. Checks for updates in background.
 // New version takes effect next time app opens.
-var CACHE = 'family-budget-v15';
+var CACHE = 'family-budget-v16';
 var ASSETS = [
   './', './index.html', './app.js', './storage.js',
   './firebase-config.js', './manifest.webmanifest',
